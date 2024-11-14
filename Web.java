@@ -72,9 +72,9 @@ public class Web {
         // Dropdown menu for selecting task
         response += "<label for=\"task\">Select Task:</label>";
         response += "<select name=\"task\" required>";
-        response += "<option value=\"1\">Task 1</option>";
-        response += "<option value=\"2\">Task 2</option>";
-        response += "<option value=\"3\">Task 3</option>";
+        response += "<option value=\"task_1\">Task 1</option>";
+        response += "<option value=\"task_2\">Task 2</option>";
+        response += "<option value=\"task_3\">Task 3</option>";
         response += "</select><br>";
 
         // File upload input field
@@ -156,16 +156,21 @@ public class Web {
             Registry registry = LocateRegistry.getRegistry("localhost");
             String[] names = registry.list();
             
-            List<String> taskIds = new ArrayList<>();
+            List<String> taskIdsCompleted = new ArrayList<>();
+            List<String> taskIdsQueued = new ArrayList<>();
             
             // Loop through all registered ChordNode objects and collect task IDs
             for (String name: names) {
                 if (name.startsWith("IChordNode_")) {
                     try {
                         IChordNode node = (IChordNode) registry.lookup(name); // Lookup each ChordNode
-                        taskIds.addAll(node.getTaskIds()); // Collect all task IDs from this node
-                        for(String taskId: taskIds) {
-                            System.out.println("Found task: " + taskId + " on Node: " + name);
+                        taskIdsCompleted.addAll(node.getCompletedTaskIds()); // Collect all task IDs from this node
+                        for(String taskId: taskIdsCompleted) {
+                            System.out.println("Found completed task: " + taskId + " on Node: " + name);
+                        }
+                        taskIdsQueued.addAll(node.getQueuedTaskIds()); // Collect all task IDs from this node
+                        for(String taskId: taskIdsQueued) {
+                            System.out.println("Found queued task: " + taskId + " on Node: " + name);
                         }
                     } catch (Exception e) {
                         System.err.println("Error looking up " + name + ": " + e.getMessage());
@@ -177,14 +182,28 @@ public class Web {
             String html = "<html><body>";
             html += "<h1>Completed Tasks</h1>";
             
-            if (taskIds.isEmpty()) {
+            if (taskIdsCompleted.isEmpty()) {
                 html += "<p>No completed tasks available.</p>";
             } else {
                 html += "<ul>";
                 
                 // Create download links for each task ID
-                for (String taskId : taskIds) {
+                for (String taskId : taskIdsCompleted) {
                     html += "<li><a href='/download_task?taskId=" + taskId + "'>Download Task: " + taskId + "</a></li>";
+                }
+                
+                html += "</ul>";
+            }
+
+            html += "<h1>Queued Tasks</h1>";
+            if (taskIdsQueued.isEmpty()) {
+                html += "<p>No queued tasks available.</p>";
+            } else {
+                html += "<ul>";
+                
+                // Create download links for each task ID
+                for (String taskId : taskIdsQueued) {
+                    html += "<li><p>" + taskId + "</p></li>";
                 }
                 
                 html += "</ul>";

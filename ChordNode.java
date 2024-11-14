@@ -37,7 +37,9 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	Finger finger[];
 	int nextFingerFix;
 
-	Vector<Store> dataStore = new Vector<Store>();
+	Vector<Store> queuedStore = new Vector<Store>();
+
+	Vector<Store> completedStore = new Vector<Store>();
 
 	// note: you should always use getKey() to get a node's key; this will make the
 	// transition to RMI easier
@@ -74,7 +76,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				Store newStore = new Store();
 				newStore.key = key;
 				newStore.value = value;
-				dataStore.add(newStore);
+				queuedStore.add(newStore);
 				System.out.println("/----------/\nStored: " + key);
 			}
 			else{
@@ -374,11 +376,21 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	@Override
-	public List<String> getTaskIds() {
+	public List<String> getCompletedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
-		for (Store store : dataStore) {
+		for (Store store : completedStore) {
 			System.out.println("adding: " + store.key);
 			taskIds.add(store.key); // Add the key (task ID) for each stored task
+		}
+		return taskIds;
+	}
+
+	@Override
+	public List<String> getQueuedTaskIds() {
+		List<String> taskIds = new ArrayList<>();
+		for(Store store: queuedStore) {
+			System.out.println("Adding queued task: " + store.key);
+			taskIds.add(store.key);
 		}
 		return taskIds;
 	}
