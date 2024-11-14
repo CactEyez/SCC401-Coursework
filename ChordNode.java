@@ -281,7 +281,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				registry.unbind("IChordNode_" + predecessorKey);
 				predecessor = null;
 				predecessorKey = 0;
-				System.out.println("Chord: " + predecessorKey + " has failed.");
+				System.out.println("/----------/\nChord: " + predecessorKey + " has failed.");
 			}
 		}catch(Exception e){}
 	}
@@ -290,6 +290,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		try{
 			if(!isAlive(successorKey))
 			{
+				System.out.println("/----------/\nChord: " + successorKey + " has failed.");
 				findNewSuccessor();
 			}
 		} catch(Exception e){}
