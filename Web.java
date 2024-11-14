@@ -4,6 +4,7 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 class HTTPRequest {
     RequestType type;
@@ -42,7 +43,7 @@ public class Web {
             if (content != null)
                 output.write(content);
         } catch (IOException e) {
-            e.printStackTrace();
+            //e.printStackTrace();
         }
     }
 
@@ -89,6 +90,66 @@ public class Web {
 
         sendResponse(output, RESPONSE_OK, "text/html", response.getBytes());
     }
+    /*
+    void page_upload_do(HTTPRequest request, OutputStream output) {
+        // Extract task details from the request
+        String taskType = request.getHeaderValue("task");  // Assuming task is selected in the form
+        String filename = request.getHeaderValue("filename");
+        
+        // Process the uploaded file (e.g., save it temporarily or read it into memory)
+        byte[] fileContent = processFileUpload(request);
+    
+        if (fileContent != null) {
+            // Assuming fileContent and taskType are used to create a task ID
+            String taskId = generateTaskId(taskType, filename);
+    
+            // Find the appropriate node in the Chord network to store the task
+            try {
+                Registry registry = LocateRegistry.getRegistry("localhost");
+                String[] names = registry.list();
+                IChordNode startNode = null;
+    
+                for (String name : names) {
+                    if (name.startsWith("IChordNode_")) {
+                        try {
+                            startNode = (IChordNode) registry.lookup(name);
+                            // If this node is appropriate, store the task
+                            startNode.put(taskId, fileContent);
+                            break;
+                        } catch (Exception e) {
+                            System.err.println("Error looking up " + name + ": " + e.getMessage());
+                        }
+                    }
+                }
+    
+                sendResponse(output, RESPONSE_OK, "text/html", "<html><body>Task submitted successfully!</body></html>".getBytes());
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendResponse(output, RESPONSE_SERVER_ERROR, "text/html", "<html><body>Failed to submit task.</body></html>".getBytes());
+            }
+        } else {
+            sendResponse(output, RESPONSE_SERVER_ERROR, "text/html", "<html><body>File processing error.</body></html>".getBytes());
+        }
+    }*/
+
+    void distributeTaskToDHT(String taskId, byte[] fileContent) {
+        try {
+            Registry registry = LocateRegistry.getRegistry("localhost");
+            String[] names = registry.list();
+            IChordNode startingNode;
+            for(String name: names)
+            {
+                if(name.contains("IChordNode_")) {
+                    startingNode = (IChordNode) registry.lookup(name);
+                    startingNode.put(taskId, fileContent);
+                    System.out.println("Uploaded file: " + taskId + " starting at node: " + startingNode.getKey());
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     void page_download(OutputStream output) {
         try {
@@ -98,11 +159,14 @@ public class Web {
             List<String> taskIds = new ArrayList<>();
             
             // Loop through all registered ChordNode objects and collect task IDs
-            for (String name : names) {
-                if (name.startsWith("ChordNode_")) {
+            for (String name: names) {
+                if (name.startsWith("IChordNode_")) {
                     try {
-                        ChordNode node = (ChordNode) registry.lookup(name); // Lookup each ChordNode
+                        IChordNode node = (IChordNode) registry.lookup(name); // Lookup each ChordNode
                         taskIds.addAll(node.getTaskIds()); // Collect all task IDs from this node
+                        for(String taskId: taskIds) {
+                            System.out.println("Found task: " + taskId + " on Node: " + name);
+                        }
                     } catch (Exception e) {
                         System.err.println("Error looking up " + name + ": " + e.getMessage());
                     }
@@ -138,65 +202,47 @@ public class Web {
     }
 
     void download_task(HTTPRequest request, OutputStream output) {
-        // Extract the task ID from the request
-        String taskId = request.resource.split("\\?")[1].split("=")[1];  // Extracts the value of taskId
+        // Extract task ID from request
+        String taskId = request.resource.split("\\?")[1].split("=")[1];
     
-        // Retrieve the file content from the DHT based on the taskId
-        byte[] fileContent = retrieveFileFromChordDHT(taskId);
+        // Retrieve task content from the DHT
+        byte[] taskContent = retrieveTaskFromDHT(taskId);
     
-        // Send the file content as a response
-        if (fileContent != null) {
-            sendResponse(output, RESPONSE_OK, "application/octet-stream", fileContent);
+        // Send task content as response
+        if (taskContent != null) {
+            sendResponse(output, RESPONSE_OK, "application/octet-stream", taskContent);
         } else {
             sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html><body>Task not found.</body></html>".getBytes());
         }
     }
     
-    byte[] retrieveFileFromChordDHT(String taskId) {
+    byte[] retrieveTaskFromDHT(String taskId) {
         try {
-            // Get the registry and list all registered ChordNode objects
+            // Get registry and list all registered ChordNode objects
             Registry registry = LocateRegistry.getRegistry("localhost");
             String[] names = registry.list();
             
-            ChordNode targetNode = null;
-    
-            // Loop through the registry list and find the first ChordNode_ object
+            // Loop through the registry list and find the appropriate ChordNode
             for (String name : names) {
-                if (name.startsWith("ChordNode_")) {
+                if (name.startsWith("IChordNode_")) {
                     try {
-                        // Lookup the ChordNode from the registry
-                        ChordNode node = (ChordNode) registry.lookup(name);
-                        
-                        // Now use this node to retrieve the task (you can stop once you find a valid node)
-                        targetNode = node;
-                        break;  // Break after finding the first valid ChordNode
+                        IChordNode node = (IChordNode) registry.lookup(name);
+                        // Retrieve the task from the node's store
+                        byte[] content = node.get(taskId);
+                        if (content != null) {
+                            return content;
+                        }
                     } catch (Exception e) {
                         System.err.println("Error looking up " + name + ": " + e.getMessage());
                     }
                 }
             }
-    
-            // If no valid ChordNode found, return null
-            if (targetNode == null) {
-                System.err.println("No ChordNode found in registry.");
-                return null;
-            }
-    
-            // Now that we have a target node, retrieve the file content for the given taskId
-            for (Store store : targetNode.dataStore) {
-                if (store.key.equals(taskId)) {
-                    return store.value;  // Return the file content
-                }
-            }
-    
-            // If no matching taskId found in the node's data store
-            return null;
+            
         } catch (Exception e) {
             e.printStackTrace();
-            return null;
         }
-    }
-    
+        return null; // Return null if no task is found
+    }    
 
     // this function maps GET requests onto functions / code which return HTML pages
     void get(HTTPRequest request, OutputStream output) {
@@ -224,19 +270,20 @@ public class Web {
                 FormData data = formParser.getFormData(request.getHeaderValue("content-type"), payload);
                 String filename = null;
                 String task = null;
+                byte[] fileData = null;
                 for (int i = 0; i < data.fields.length; i++) {
-                    System.out.println("field: " + data.fields[i].name);
-
-                    if (data.fields[i].name.equals("content")) {
-                        filename = ((FileFormField) data.fields[i]).filename;
-                        System.out.println(" -- filename: " + ((FileFormField) data.fields[i]).filename);
-                    }
-
                     if (data.fields[i].name.equals("task")) {
-                        task = new String(data.fields[i].content);
-                        System.out.println(" -- selected task: " + task);
+                        // Handle regular form field (task selection)
+                        task = new String(data.fields[i].content);  // Convert byte array to String
+                        System.out.println("Selected task: " + task);
+                    } else if (data.fields[i].name.equals("content")) {
+                        // Handle file upload field
+                        filename = ((FileFormField) data.fields[i]).filename;
+                        fileData = data.fields[i].content;
                     }
-
+                }
+                if(filename != null && task != null && fileData != null) {
+                    distributeTaskToDHT(task + "-" + filename, fileData);
                 }
                 String response = "";
                 response += "<html>";
@@ -300,5 +347,4 @@ public class Web {
         String xml = "";
         sendResponse(output, RESPONSE_OK, "application/xml", xml.getBytes());
     }
-
 }

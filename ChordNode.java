@@ -67,6 +67,21 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	public void put(String key, byte[] value) {
 		// find the node that should hold this key and add the key and value to that
 		// node's local store
+		try{
+			int keyHash = hash(key);
+			IChordNode keyNode = findSuccessor(keyHash);
+			if(keyNode.getKey() == this.getKey()) {
+				Store newStore = new Store();
+				newStore.key = key;
+				newStore.value = value;
+				dataStore.add(newStore);
+				System.out.println("/----------/\nStored: " + key);
+			}
+			else{
+				this.successor.put(key, value);
+				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
+			}
+		}catch(Exception e) {}
 	}
 
 	@Override
@@ -198,7 +213,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	// -- hash functions --
 	// this function converts a string "s" to a key that can be used with the DHT's
 	// API functions
-	int hash(String s) {
+	@Override
+	public int hash(String s) {
 		int hash = 0;
 
 		for (int i = 0; i < s.length(); i++)
@@ -361,6 +377,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	public List<String> getTaskIds() {
 		List<String> taskIds = new ArrayList<>();
 		for (Store store : dataStore) {
+			System.out.println("adding: " + store.key);
 			taskIds.add(store.key); // Add the key (task ID) for each stored task
 		}
 		return taskIds;

@@ -12,4 +12,5 @@ public interface IChordNode extends Remote{
     IChordNode findSuccessor(int key) throws RemoteException;
     int getKey() throws RemoteException;
     void notify(IChordNode potentialPredecessor) throws RemoteException;
+    int hash(String key) throws RemoteException;
 }
