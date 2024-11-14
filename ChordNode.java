@@ -378,8 +378,11 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	@Override
 	public List<String> getCompletedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
+		if(completedStore.size() != 0) {
+			System.out.println("/----------/");
+		}
 		for (Store store : completedStore) {
-			System.out.println("adding: " + store.key);
+			System.out.println("Adding completed task: " + store.key);
 			taskIds.add(store.key); // Add the key (task ID) for each stored task
 		}
 		return taskIds;
@@ -388,6 +391,9 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	@Override
 	public List<String> getQueuedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
+		if(queuedStore.size() != 0) {
+			System.out.println("/----------/");
+		}
 		for(Store store: queuedStore) {
 			System.out.println("Adding queued task: " + store.key);
 			taskIds.add(store.key);
