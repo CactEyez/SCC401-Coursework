@@ -4,7 +4,6 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 class HTTPRequest {
     RequestType type;
@@ -43,7 +42,7 @@ public class Web {
             if (content != null)
                 output.write(content);
         } catch (IOException e) {
-            //e.printStackTrace();
+            // e.printStackTrace();
         }
     }
 
@@ -90,56 +89,92 @@ public class Web {
 
         sendResponse(output, RESPONSE_OK, "text/html", response.getBytes());
     }
-    /*
-    void page_upload_do(HTTPRequest request, OutputStream output) {
-        // Extract task details from the request
-        String taskType = request.getHeaderValue("task");  // Assuming task is selected in the form
-        String filename = request.getHeaderValue("filename");
-        
-        // Process the uploaded file (e.g., save it temporarily or read it into memory)
-        byte[] fileContent = processFileUpload(request);
-    
-        if (fileContent != null) {
-            // Assuming fileContent and taskType are used to create a task ID
-            String taskId = generateTaskId(taskType, filename);
-    
-            // Find the appropriate node in the Chord network to store the task
-            try {
-                Registry registry = LocateRegistry.getRegistry("localhost");
-                String[] names = registry.list();
-                IChordNode startNode = null;
-    
-                for (String name : names) {
-                    if (name.startsWith("IChordNode_")) {
-                        try {
-                            startNode = (IChordNode) registry.lookup(name);
-                            // If this node is appropriate, store the task
-                            startNode.put(taskId, fileContent);
-                            break;
-                        } catch (Exception e) {
-                            System.err.println("Error looking up " + name + ": " + e.getMessage());
+
+    void page_download(OutputStream output) {
+        try {
+            Registry registry = LocateRegistry.getRegistry("localhost");
+            String[] names = registry.list();
+
+            List<String> taskIdsCompleted = new ArrayList<>();
+            List<String> taskIdsQueued = new ArrayList<>();
+
+            // Loop through all registered ChordNode objects and collect task IDs
+            for (String name : names) {
+                if (name.startsWith("IChordNode_")) {
+                    try {
+                        IChordNode node = (IChordNode) registry.lookup(name); // Lookup each ChordNode
+                        taskIdsCompleted.addAll(node.getCompletedTaskIds()); // Collect all task IDs from this node
+                        for (String taskId : taskIdsCompleted) {
+                            System.out.println("Found completed task: " + taskId + " on Node: " + name);
                         }
+                        taskIdsQueued.addAll(node.getQueuedTaskIds()); // Collect all task IDs from this node
+                        for (String taskId : taskIdsQueued) {
+                            System.out.println("Found queued task: " + taskId + " on Node: " + name);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error looking up " + name + ": " + e.getMessage());
                     }
                 }
-    
-                sendResponse(output, RESPONSE_OK, "text/html", "<html><body>Task submitted successfully!</body></html>".getBytes());
-            } catch (Exception e) {
-                e.printStackTrace();
-                sendResponse(output, RESPONSE_SERVER_ERROR, "text/html", "<html><body>Failed to submit task.</body></html>".getBytes());
             }
-        } else {
-            sendResponse(output, RESPONSE_SERVER_ERROR, "text/html", "<html><body>File processing error.</body></html>".getBytes());
+
+            // Start HTML content for the download page
+            String html = "<html><body>";
+            html += "<h1>Completed Tasks</h1>";
+
+            if (taskIdsCompleted.isEmpty()) {
+                html += "<p>No completed tasks available.</p>";
+            } else {
+                html += "<ul>";
+
+                // Create download links for each task ID
+                for (String taskId : taskIdsCompleted) {
+                    html += "<li>";
+                    html += "<form action=\"/download_task\" method=\"POST\">";
+                    html += "<input type=\"hidden\" name=\"taskId\" value=\"" + taskId + "\" />";
+                    html += "<input type=\"submit\" value=\"Download Task: " + taskId + "\" />";
+                    html += "</form>";
+                    html += "</li>";
+                }
+
+                html += "</ul>";
+            }
+
+            html += "<h1>Queued Tasks</h1>";
+            if (taskIdsQueued.isEmpty()) {
+                html += "<p>No queued tasks available.</p>";
+            } else {
+                html += "<ul>";
+
+                // Create download links for each task ID
+                for (String taskId : taskIdsQueued) {
+                    html += "<li><p>" + taskId + "</p></li>";
+                }
+
+                html += "</ul>";
+            }
+
+            html += "<form action=\"/\" method=\"GET\">";
+            html += "<input type=\"submit\" value=\"Return to Main Page\" />";
+            html += "</form>";
+
+            // End of the HTML content
+            html += "</body></html>";
+
+            // Send the response with the list of available tasks
+            sendResponse(output, RESPONSE_OK, "text/html", html.getBytes());
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-    }*/
+    }
 
     void distributeTaskToDHT(String taskId, byte[] fileContent) {
         try {
             Registry registry = LocateRegistry.getRegistry("localhost");
             String[] names = registry.list();
             IChordNode startingNode;
-            for(String name: names)
-            {
-                if(name.contains("IChordNode_")) {
+            for (String name : names) {
+                if (name.contains("IChordNode_")) {
                     startingNode = (IChordNode) registry.lookup(name);
                     startingNode.put(taskId, fileContent);
                     System.out.println("Uploaded file: " + taskId + " starting at node: " + startingNode.getKey());
@@ -151,117 +186,25 @@ public class Web {
         }
     }
 
-    void page_download(OutputStream output) {
-        try {
-            Registry registry = LocateRegistry.getRegistry("localhost");
-            String[] names = registry.list();
-            
-            List<String> taskIdsCompleted = new ArrayList<>();
-            List<String> taskIdsQueued = new ArrayList<>();
-            
-            // Loop through all registered ChordNode objects and collect task IDs
-            for (String name: names) {
-                if (name.startsWith("IChordNode_")) {
-                    try {
-                        IChordNode node = (IChordNode) registry.lookup(name); // Lookup each ChordNode
-                        taskIdsCompleted.addAll(node.getCompletedTaskIds()); // Collect all task IDs from this node
-                        for(String taskId: taskIdsCompleted) {
-                            System.out.println("Found completed task: " + taskId + " on Node: " + name);
-                        }
-                        taskIdsQueued.addAll(node.getQueuedTaskIds()); // Collect all task IDs from this node
-                        for(String taskId: taskIdsQueued) {
-                            System.out.println("Found queued task: " + taskId + " on Node: " + name);
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error looking up " + name + ": " + e.getMessage());
-                    }
-                }
-            }
-            
-            // Start HTML content for the download page
-            String html = "<html><body>";
-            html += "<h1>Completed Tasks</h1>";
-            
-            if (taskIdsCompleted.isEmpty()) {
-                html += "<p>No completed tasks available.</p>";
-            } else {
-                html += "<ul>";
-                
-                // Create download links for each task ID
-                for (String taskId : taskIdsCompleted) {
-                    html += "<li><a href='/download_task?taskId=" + taskId + "'>Download Task: " + taskId + "</a></li>";
-                }
-                
-                html += "</ul>";
-            }
-
-            html += "<h1>Queued Tasks</h1>";
-            if (taskIdsQueued.isEmpty()) {
-                html += "<p>No queued tasks available.</p>";
-            } else {
-                html += "<ul>";
-                
-                // Create download links for each task ID
-                for (String taskId : taskIdsQueued) {
-                    html += "<li><p>" + taskId + "</p></li>";
-                }
-                
-                html += "</ul>";
-            }
-            
-            // End of the HTML content
-            html += "</body></html>";
-            
-            // Send the response with the list of available tasks
-            sendResponse(output, RESPONSE_OK, "text/html", html.getBytes());
-            
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    void download_task(HTTPRequest request, OutputStream output) {
-        // Extract task ID from request
-        String taskId = request.resource.split("\\?")[1].split("=")[1];
-    
-        // Retrieve task content from the DHT
-        byte[] taskContent = retrieveTaskFromDHT(taskId);
-    
-        // Send task content as response
-        if (taskContent != null) {
-            sendResponse(output, RESPONSE_OK, "application/octet-stream", taskContent);
-        } else {
-            sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html><body>Task not found.</body></html>".getBytes());
-        }
-    }
-    
     byte[] retrieveTaskFromDHT(String taskId) {
         try {
-            // Get registry and list all registered ChordNode objects
             Registry registry = LocateRegistry.getRegistry("localhost");
             String[] names = registry.list();
-            
-            // Loop through the registry list and find the appropriate ChordNode
+            IChordNode startingNode;
+            byte[] retrievedTask = null;
             for (String name : names) {
-                if (name.startsWith("IChordNode_")) {
-                    try {
-                        IChordNode node = (IChordNode) registry.lookup(name);
-                        // Retrieve the task from the node's store
-                        byte[] content = node.get(taskId);
-                        if (content != null) {
-                            return content;
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error looking up " + name + ": " + e.getMessage());
-                    }
+                if (name.contains("IChordNode_")) {
+                    startingNode = (IChordNode) registry.lookup(name);
+                    retrievedTask = startingNode.get(taskId);
+                    System.out.println("Finding file: " + taskId + " starting at node: " + startingNode.getKey());
+                    return retrievedTask;
                 }
             }
-            
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return null; // Return null if no task is found
-    }    
+        return null;
+    }
 
     // this function maps GET requests onto functions / code which return HTML pages
     void get(HTTPRequest request, OutputStream output) {
@@ -293,7 +236,7 @@ public class Web {
                 for (int i = 0; i < data.fields.length; i++) {
                     if (data.fields[i].name.equals("task")) {
                         // Handle regular form field (task selection)
-                        task = new String(data.fields[i].content);  // Convert byte array to String
+                        task = new String(data.fields[i].content); // Convert byte array to String
                         System.out.println("Selected task: " + task);
                     } else if (data.fields[i].name.equals("content")) {
                         // Handle file upload field
@@ -301,7 +244,7 @@ public class Web {
                         fileData = data.fields[i].content;
                     }
                 }
-                if(filename != null && task != null && fileData != null) {
+                if (filename != null && task != null && fileData != null) {
                     distributeTaskToDHT(task + "-" + filename, fileData);
                 }
                 String response = "";
@@ -324,46 +267,61 @@ public class Web {
                 sendResponse(output, RESPONSE_SERVER_ERROR, null, null);
             }
         }
-    }
-
-    public void getFile(File file) {
-        // Define the source directory path
-        String path = "/Users/Stephen/OneDrive/Documents/SCC401/task2/lab2";
-
-        // Create a File object for the specific file to be downloaded
-        File source = new File(path, file.getName()); // Construct the full path to the file
-
-        // Get the user's home directory and create a path for the destination
-        // (Downloads folder)
-        String home = System.getProperty("user.home");
-        File dest = new File(home + "/Downloads/" + file.getName());
-
-        if (!source.exists()) {
-            System.out.println("Source file does not exist.");
-            return;
+        else if (request.resource.contains("/download_task")) {
+            if (request.getHeaderValue("content-type") != null
+                && request.getHeaderValue("content-type").startsWith("application/x-www-form-urlencoded")) {
+                
+                String body = new String(payload);
+                String[] pairs = body.split("&");
+                String taskId = null;
+                
+                // Extract taskId from the form data
+                for (String pair : pairs) {
+                    String[] keyValue = pair.split("=");
+                    if (keyValue.length == 2 && keyValue[0].equals("taskId")) {
+                        taskId = keyValue[1];
+                    }
+                }
+        
+                // Check if taskId was found
+                if (taskId != null) {
+                    System.out.println("Task ID: " + taskId);
+                    byte[] fileData = retrieveTaskFromDHT(taskId);  // Retrieve the file data from DHT
+        
+                    if (fileData != null) {
+                        String fileContent = new String(fileData);
+                        System.out.println("File content:\n" + fileContent);
+        
+                        // Set the file name to taskId.xml
+                        String fileName = taskId.split("[.]")[0] + ".xml";
+                        System.out.println("Filename for download: " + fileName);
+        
+                        // Set the response headers for file download
+                        // Send the HTTP headers for the download:
+                        try{
+                            output.write("HTTP/1.1 200 OK\r\n".getBytes());
+                            output.write("Content-Type: application/xml\r\n".getBytes());
+                            output.write(("Content-Disposition: attachment; filename=\"" + fileName + "\"\r\n").getBytes());
+                            output.write("Connection: close\r\n".getBytes());
+                            output.write("\r\n".getBytes());  // End of headers
+            
+                            // Send the actual file content (XML) to the client:
+                            output.write(fileData);  // This sends the file content as a download
+                            output.flush();  // Make sure the file content is sent out
+                        }catch(Exception e) {System.out.println("Failed the output stuff");}
+        
+                        System.out.println("File sent for download as: " + fileName);
+                    } else {
+                        // If the task wasn't found, notify the user
+                        sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());
+                    }
+                } else {
+                    // If taskId is invalid or not provided, notify the user
+                    sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Invalid task request.</html>".getBytes());
+                }
+            } else {
+                sendResponse(output, RESPONSE_SERVER_ERROR, null, null);
+            }
         }
-
-        System.out.println("Source path: " + source.getPath());
-        System.out.println("Dest path: " + dest.getPath());
-
-        // Declare channels for file transfer
-        try (FileInputStream fis = new FileInputStream(source);
-                FileOutputStream fos = new FileOutputStream(dest);
-                FileChannel sourceChannel = fis.getChannel();
-                FileChannel destChannel = fos.getChannel()) {
-
-            // Transfer content from source to destination file
-            destChannel.transferFrom(sourceChannel, 0, sourceChannel.size());
-
-        } catch (IOException e) {
-            // Handle exception and print stack trace
-            System.out.println("Error during file download: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public void listFilesXML(OutputStream output) {
-        String xml = "";
-        sendResponse(output, RESPONSE_OK, "application/xml", xml.getBytes());
     }
 }

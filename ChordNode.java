@@ -1,11 +1,24 @@
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.transform.dom.DOMSource;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.registry.Registry;
-import java.rmi.registry.LocateRegistry;
 
 class Finger {
 	public int key;
@@ -69,28 +82,44 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	public void put(String key, byte[] value) {
 		// find the node that should hold this key and add the key and value to that
 		// node's local store
-		try{
+		try {
 			int keyHash = hash(key);
 			IChordNode keyNode = findSuccessor(keyHash);
-			if(keyNode.getKey() == this.getKey()) {
+			if (keyNode.getKey() == this.getKey()) {
 				Store newStore = new Store();
 				newStore.key = key;
 				newStore.value = value;
 				queuedStore.add(newStore);
 				System.out.println("/----------/\nStored: " + key);
-			}
-			else{
+			} else {
 				this.successor.put(key, value);
 				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
 			}
-		}catch(Exception e) {}
+		} catch (Exception e) {
+		}
 	}
 
 	@Override
 	public byte[] get(String key) {
 		// find the node that should hold this key, request the corresponding value from
 		// that node's local store, and return it
-
+		System.out.println("At node: " + this.getKey());
+		try {
+			int keyHash = hash(key);
+			IChordNode keyNode = findSuccessor(keyHash);
+			if (keyNode.getKey() == this.getKey()) {
+				for(Store store: completedStore) {
+					if(store.key.equals(key)) {
+						System.out.println("/----------/\nRetrieved: " + key);
+						return store.value;
+					}
+				}
+			} else {
+				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
+				return this.successor.get(key);
+			}
+		} catch (Exception e) {
+		}
 		return null;
 	}
 
@@ -114,13 +143,12 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	// -- topology management functions --
 	@Override
 	public void join(IChordNode atNode) {
-		try{
+		try {
 			predecessor = null;
 			predecessorKey = 0;
 			successor = atNode.findSuccessor(this.getKey());
 			successorKey = successor.getKey();
-		}catch(Exception e)
-		{
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
@@ -128,7 +156,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	// -- utility functions --
 	@Override
 	public IChordNode findSuccessor(int key) {
-		try{
+		try {
 			if (isInHalfOpenRangeR(key, this.getKey(), successorKey) && isAlive(successorKey)) {
 				return successor;
 			} else {
@@ -138,8 +166,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 					return closestPrecedingNode(key).findSuccessor(key);
 				}
 			}
-		}catch(Exception e)
-		{
+		} catch (Exception e) {
 			return null;
 		}
 	}
@@ -153,28 +180,27 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		return this;
 	}
 
-	boolean isAlive(int key)
-	{
+	boolean isAlive(int key) {
 		boolean chordAlive = false;
-		try{
+		try {
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
 
-			for (String name: names) {
-				if(name.equals("IChordNode_" + key)) {
+			for (String name : names) {
+				if (name.equals("IChordNode_" + key)) {
 					try {
 						IChordNode foundNode = (IChordNode) registry.lookup(name);
 						int test = foundNode.getKey();
 						chordAlive = true;
 						break;
-					} catch (Exception e)
-					{
+					} catch (Exception e) {
 						chordAlive = false;
 						break;
 					}
 				}
 			}
-		}catch(Exception e){}
+		} catch (Exception e) {
+		}
 		return chordAlive;
 	}
 
@@ -231,16 +257,17 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	// -- maintenance --
 	@Override
 	public void notify(IChordNode potentialPredecessor) {
-		try{
+		try {
 			if (predecessor == null || isInOpenRange(potentialPredecessor.getKey(), predecessorKey, this.getKey())) {
 				predecessor = potentialPredecessor;
 				predecessorKey = predecessor.getKey();
 			}
-		}catch(Exception e){}
+		} catch (Exception e) {
+		}
 	}
 
 	void stabilise() {
-		try{
+		try {
 			IChordNode x = successor.getPredecessor();
 			if (x != null) {
 				if (isInOpenRange(x.getKey(), this.getKey(), successorKey)) {
@@ -248,73 +275,72 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 					successorKey = successor.getKey();
 				}
 			}
+		} catch (Exception e) {
 		}
-		catch(Exception e){}
 		try {
 			successor.notify(this);
-		} catch (Exception e) {}
+		} catch (Exception e) {
+		}
 	}
 
 	void fixFingers() {
-		try{
-			for(int i = 0; i < KEY_BITS; i++)
-			{
-				if(isAlive(finger[i].key) || finger[i].key == 0)
-				{		
-					IChordNode fingerSucessor = findSuccessor(this.getKey() + (int)Math.pow(2, i) % (int) Math.pow(2, KEY_BITS));
+		try {
+			for (int i = 0; i < KEY_BITS; i++) {
+				if (isAlive(finger[i].key) || finger[i].key == 0) {
+					IChordNode fingerSucessor = findSuccessor(
+							this.getKey() + (int) Math.pow(2, i) % (int) Math.pow(2, KEY_BITS));
 					finger[i].node = fingerSucessor;
 					finger[i].key = finger[i].node.getKey();
-				}
-				else{
+				} else {
 					finger[i].node = null;
 					finger[i].key = 0;
 				}
 			}
-		} catch(Exception e){}
+		} catch (Exception e) {
+		}
 	}
 
 	void checkPredecessor() {
-		try{
-			if(!isAlive(predecessorKey))
-			{
+		try {
+			if (!isAlive(predecessorKey)) {
 				Registry registry = LocateRegistry.getRegistry("localhost");
 				registry.unbind("IChordNode_" + predecessorKey);
 				predecessor = null;
 				predecessorKey = 0;
 				System.out.println("/----------/\nChord: " + predecessorKey + " has failed.");
 			}
-		}catch(Exception e){}
+		} catch (Exception e) {
+		}
 	}
 
-	void checkSuccessor(){
-		try{
-			if(!isAlive(successorKey))
-			{
+	void checkSuccessor() {
+		try {
+			if (!isAlive(successorKey)) {
 				System.out.println("/----------/\nChord: " + successorKey + " has failed.");
 				findNewSuccessor();
 			}
-		} catch(Exception e){}
+		} catch (Exception e) {
+		}
 	}
 
-	void findNewSuccessor()
-	{
-		try{
+	void findNewSuccessor() {
+		try {
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
-			if(names.length == 2)
-			{
+			if (names.length == 2) {
 				successor = this;
 				successorKey = successor.getKey();
 				predecessor = this;
 				predecessorKey = predecessor.getKey();
 			}
-			for(String name: names) {
-				if(name.contains("IChordNode_") && !name.equals("IChordNode_" + this.getKey())) {
+			for (String name : names) {
+				if (name.contains("IChordNode_") && !name.equals("IChordNode_" + this.getKey())) {
 					this.successor = (IChordNode) registry.lookup(name);
 					this.successorKey = this.successor.getKey();
 				}
 			}
-		}catch(Exception e){}
+		} catch (Exception e) {
+		}
 	}
 
 	void checkDataMoveDown() {
@@ -359,12 +385,153 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
+
+			try {
+				checkQueue();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 			i++;
 			if(i % 8 == 0){
 				printDetails();
 			}
 		}
 	}
+
+	public void checkQueue() {
+		if(queuedStore.size() != 0) {
+			processTask(queuedStore.get(0));
+		}
+	}
+
+	public void processTask(Store taskStore) {
+		String taskType = taskStore.key.split("[-]")[0];
+		Store completedTask = null;
+		switch (taskType) {
+			case "task_1":
+				completedTask = completeTask1(taskStore);
+				break;
+			case "task_2":
+				completedTask = completeTask2(taskStore);
+				break;
+			case "task_3":
+				completedTask = completeTask3(taskStore);
+				break;
+		}
+		if(completedTask != null) {
+			completedStore.add(completedTask);
+			queuedStore.remove(0);
+		}
+	}
+
+	public Store completeTask1(Store taskStore) {
+		String fileName = taskStore.key.split("[-]")[1];
+		String fileType = fileName.split("[.]")[1];
+		if(fileType.equals("txt")) {
+			String textFile = new String(taskStore.value, StandardCharsets.UTF_8);
+			String[] lines = textFile.split("\n");
+
+			int wordTotal = 0;
+			int totalLength = 0;
+			ArrayList<String> words = new ArrayList<>();
+			ArrayList<Integer> wordCount = new ArrayList<>();
+			for(String line: lines) {
+				wordTotal += line.split(" ").length;
+				for(String word: line.split(" ")) {
+					word = word.toLowerCase();
+					if(words.contains(word)) {
+						wordCount.set(words.indexOf(word), wordCount.get(words.indexOf(word)) + 1);
+					}
+					else {
+						words.add(word);
+						wordCount.add(1);
+					}
+					totalLength += word.length();
+				}
+			}
+			int highest = 0;
+			int highestId = 0;
+			for(int wordAmount: wordCount) {
+				if(wordAmount > highest) {
+					highest = wordAmount;
+					highestId = wordCount.indexOf(wordAmount);
+				}
+			}
+			String mostCommonWord = words.get(highestId);
+			int averageWordLength = totalLength/wordTotal;
+
+			try{
+				DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+				DocumentBuilder builder = factory.newDocumentBuilder();
+
+				Document document = builder.newDocument();
+				
+				Element root = document.createElement("Task1");
+				document.appendChild(root);
+
+				Element total = document.createElement("Total");
+				total.appendChild(document.createTextNode(Integer.toString(wordTotal)));
+
+				Element common = document.createElement("Common");
+				common.appendChild(document.createTextNode(mostCommonWord));
+
+				Element length = document.createElement("Average");
+				length.appendChild(document.createTextNode(Integer.toString(averageWordLength)));
+
+				root.appendChild(total);
+				root.appendChild(common);
+				root.appendChild(length);
+
+				TransformerFactory transformerFactory = TransformerFactory.newInstance();
+				Transformer transformer = transformerFactory.newTransformer();
+				DOMSource source = new DOMSource(document);
+				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+				StreamResult result = new StreamResult(outputStream);
+				transformer.transform(source, result);
+
+				Store completedTask = new Store();
+				System.out.println("Filename: " + fileName);
+				completedTask.key = fileName;
+				completedTask.value = outputStream.toByteArray();
+
+				return completedTask;
+			}catch(Exception e) {
+				System.out.println("Failed to make XML file");
+				e.printStackTrace();
+				return null;
+			}
+		}
+		else {
+			System.out.println("Wrong file type, should be .txt");
+		}
+		return null;
+	}
+
+	public Store completeTask2(Store taskStore) {
+		String fileName = taskStore.key.split("[-]")[1];
+		String fileType = fileName.split("[.]")[1];
+		if(fileType.equals("txt")) {
+
+		}
+		else {
+			System.out.println("Wrong file type, should be .txt");
+		}
+		return null;
+	}
+
+	public Store completeTask3(Store taskStore) {
+		String fileName = taskStore.key.split("[-]")[1];
+		String fileType = fileName.split("[.]")[1];
+		if(fileType.equals("txt")) {
+
+		}
+		else {
+			System.out.println("Wrong file type, should be .txt");
+		}
+		return null;
+	}
+
+
 
 	public void printDetails() {
 		System.out.println("/----------/");
@@ -379,7 +546,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	@Override
 	public List<String> getCompletedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
-		if(completedStore.size() != 0) {
+		if (completedStore.size() != 0) {
 			System.out.println("/----------/");
 		}
 		for (Store store : completedStore) {
@@ -392,10 +559,10 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	@Override
 	public List<String> getQueuedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
-		if(queuedStore.size() != 0) {
+		if (queuedStore.size() != 0) {
 			System.out.println("/----------/");
 		}
-		for(Store store: queuedStore) {
+		for (Store store : queuedStore) {
 			System.out.println("Adding queued task: " + store.key);
 			taskIds.add(store.key);
 		}
