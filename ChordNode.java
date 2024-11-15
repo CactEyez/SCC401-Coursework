@@ -394,23 +394,12 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
 			
+			successor = this;
+			successorKey = successor.getKey();
 			// This if statement is for the specific scenario when there is only one node left on the system
 			if (names.length == 1) {
-				successor = this;
-				successorKey = successor.getKey();
 				predecessor = this;
 				predecessorKey = predecessor.getKey();
-			}
-
-			// Iterates through the registry to find any IChordNode
-			// this IChordNode is not used permanently as the successor
-			// but instead removes the dead node from being referenced
-			// and allows stabilise to properly start stabilising
-			for (String name : names) {
-				if (name.contains("IChordNode_") && !name.equals("IChordNode_" + this.getKey())) {
-					this.successor = (IChordNode) registry.lookup(name);
-					this.successorKey = this.successor.getKey();
-				}
 			}
 		} catch (Exception e) {
 		}
