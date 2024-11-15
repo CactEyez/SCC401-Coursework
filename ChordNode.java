@@ -17,6 +17,7 @@ import org.w3c.dom.Element;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -33,7 +34,7 @@ class Finger {
 	public IChordNode node;
 }
 
-class Store {
+class Store implements Serializable {
 	String key;
 	byte[] value;
 }
@@ -62,6 +63,10 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 
 	Vector<Store> completedStore = new Vector<Store>();
 
+	Vector<Store> queuedStorePred = new Vector<Store>();
+
+	Vector<Store> completedStorePred = new Vector<Store>();
+
 	// note: you should always use getKey() to get a node's key; this will make the
 	// transition to RMI easier
 	private int myKey;
@@ -87,7 +92,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 
 	// -- API functions --
 	@Override
-	public void put(String key, byte[] value) {
+	public void put(String key, byte[] value, boolean queue) {
 		// find the node that should hold this key and add the key and value to that
 		// node's local store
 		try {
@@ -97,13 +102,16 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				Store newStore = new Store();
 				newStore.key = key;
 				newStore.value = value;
-				queuedStore.add(newStore);
+				if(queue) {queuedStore.add(newStore);}
+				else {completedStore.add(newStore);}
+				//predecessor.fixStores(queuedStore, completedStore);
 				System.out.println("/----------/\nStored: " + key);
 			} else {
-				this.successor.put(key, value);
+				this.successor.put(key, value, queue);
 				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
 			}
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
@@ -306,8 +314,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 					finger[i].key = 0;
 				}
 			}
-		} catch (Exception e) {
-		}
+		} catch (Exception e) {}
 	}
 
 	void checkPredecessor() {
@@ -315,9 +322,17 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			if (!isAlive(predecessorKey)) {
 				Registry registry = LocateRegistry.getRegistry("localhost");
 				registry.unbind("IChordNode_" + predecessorKey);
+				System.out.println("/----------/\nPredecessor Chord: " + predecessorKey + " has failed.");
 				predecessor = null;
 				predecessorKey = 0;
-				System.out.println("/----------/\nChord: " + predecessorKey + " has failed.");
+				for(Store store: queuedStorePred) {
+					System.out.println("(Queued) Putting: " + store.key + " in the ring starting at: " + this.getKey());
+					this.put(store.key, store.value, true);
+				}
+				for(Store store: completedStorePred) {
+					System.out.println("(Completed) Putting: " + store.key + " in the ring starting at: " + this.getKey());
+					this.put(store.key, store.value, false);
+				}
 			}
 		} catch (Exception e) {
 		}
@@ -326,7 +341,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	void checkSuccessor() {
 		try {
 			if (!isAlive(successorKey)) {
-				System.out.println("/----------/\nChord: " + successorKey + " has failed.");
+				System.out.println("/----------/\nSuccessor Chord: " + successorKey + " has failed.");
 				findNewSuccessor();
 			}
 		} catch (Exception e) {
@@ -337,7 +352,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		try {
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
-			if (names.length == 2) {
+			if (names.length == 1) {
 				successor = this;
 				successorKey = successor.getKey();
 				predecessor = this;
@@ -408,6 +423,12 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		}
 	}
 
+	@Override
+	public void fixStores(Vector<Store> qStore, Vector<Store> cStore) {
+		queuedStorePred = qStore;
+		completedStorePred = cStore;
+	}
+
 	public void checkQueue() {
 		if(queuedStore.size() != 0) {
 			processTask(queuedStore.get(0));
@@ -431,8 +452,10 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		if(completedTask != null) {
 			completedStore.add(completedTask);
 			queuedStore.remove(0);
+			try{successor.fixStores(queuedStore, completedStore);}catch(Exception e){}
 		}
 		else{queuedStore.remove(0);}
+		try{successor.fixStores(queuedStore, completedStore);}catch(Exception e){}
 	}
 
 	public Store completeTask1(Store taskStore) {

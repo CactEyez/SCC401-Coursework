@@ -175,7 +175,7 @@ public class Web {
             for (String name : names) {
                 if (name.contains("IChordNode_")) {
                     startingNode = (IChordNode) registry.lookup(name);
-                    startingNode.put(taskId, fileContent);
+                    startingNode.put(taskId, fileContent, true);
                     System.out.println("Uploaded file: " + taskId + " starting at node: " + startingNode.getKey());
                     break;
                 }
