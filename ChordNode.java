@@ -425,6 +425,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			completedStore.add(completedTask);
 			queuedStore.remove(0);
 		}
+		else{queuedStore.remove(0);}
 	}
 
 	public Store completeTask1(Store taskStore) {
@@ -510,7 +511,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	public Store completeTask2(Store taskStore) {
-		String fileName = taskStore.key.split("[-]")[1];
+		String fileName = taskStore.key;
 		try {
 			ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 			ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream);

@@ -70,8 +70,8 @@ public class Web {
         // Dropdown menu for selecting task
         response += "<label for=\"task\">Select Task:</label>";
         response += "<select name=\"task\" required>";
-        response += "<option value=\"task_1\">Task 1</option>";
-        response += "<option value=\"task_2\">Task 2</option>";
+        response += "<option value=\"task_1\">Text Analysis</option>";
+        response += "<option value=\"task_2\">Zip</option>";
         response += "<option value=\"task_3\">Task 3</option>";
         response += "</select><br>";
 
@@ -319,7 +319,7 @@ public class Web {
                                 try {
                                     output.write("HTTP/1.1 200 OK\r\n".getBytes());
                                     output.write("Content-Type: application/zip\r\n".getBytes());
-                                    output.write(("Content-Disposition: attachment; filename=\"" + fileName + "\"\r\n").getBytes());
+                                    output.write(("Content-Disposition: attachment; filename=\"" + fileName.split("[-]")[1] + "\"\r\n").getBytes());
                                     output.write("Connection: close\r\n".getBytes());
                                     output.write("\r\n".getBytes());
                                     output.write(fileData);
