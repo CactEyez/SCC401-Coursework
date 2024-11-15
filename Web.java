@@ -72,7 +72,7 @@ public class Web {
         response += "<select name=\"task\" required>";
         response += "<option value=\"task_1\">Text Analysis</option>";
         response += "<option value=\"task_2\">Zip</option>";
-        response += "<option value=\"task_3\">Task 3</option>";
+        response += "<option value=\"task_3\">Thumbnail Gen</option>";
         response += "</select><br>";
 
         // File upload input field
@@ -333,7 +333,24 @@ public class Web {
                             }
                             break;
                         case "task_3":
-
+                            if (fileData != null) {
+                                // Set the file name to taskId.zip for ZIP download
+                                String fileName = taskId.split("[.]")[0] + ".jpg";
+                                try {
+                                    output.write("HTTP/1.1 200 OK\r\n".getBytes());
+                                    output.write("Content-Type: application/jpg\r\n".getBytes());
+                                    output.write(("Content-Disposition: attachment; filename=\"" + fileName.split("[-]")[1] + "\"\r\n").getBytes());
+                                    output.write("Connection: close\r\n".getBytes());
+                                    output.write("\r\n".getBytes());
+                                    output.write(fileData);
+                                    output.flush();
+                                } catch (Exception e) {
+                                    System.out.println("Failed to send jpg file: " + e.getMessage());
+                                }
+                                System.out.println("File downloaded as: " + fileName);
+                            } else {
+                                sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());
+                            }
                             break;
                     }
                 } else {

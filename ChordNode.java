@@ -14,12 +14,19 @@ import javax.xml.transform.dom.DOMSource;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.registry.Registry;
+
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 
 class Finger {
 	public int key;
@@ -511,7 +518,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	public Store completeTask2(Store taskStore) {
-		String fileName = taskStore.key;
+		String fileName = taskStore.key.split("[-]")[1];
+		String fileType = fileName.split("[.]")[1];
 		try {
 			ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 			ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream);
@@ -524,7 +532,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			zipOutputStream.close();
 
 			Store completedTask = new Store();
-			completedTask.key = fileName;
+			completedTask.key = taskStore.key;
 			completedTask.value = byteArrayOutputStream.toByteArray();
 
 			System.out.println("/-----------/\nZipped and stored: " + completedTask.key);
@@ -537,13 +545,37 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	public Store completeTask3(Store taskStore) {
-		String fileName = taskStore.key.split("[-]")[1];
-		String fileType = fileName.split("[.]")[1];
-		if(fileType.equals("txt")) {
+		try {
+			// Read the image from byte array
+			ByteArrayInputStream bis = new ByteArrayInputStream(taskStore.value);
+			BufferedImage originalImage = ImageIO.read(bis);
 
-		}
-		else {
-			System.out.println("Wrong file type, should be .txt");
+			// Set the dimensions for the thumbnail
+			int width = 100;
+			int height = 100;
+
+			// Scale the image to the new dimensions
+			Image scaledImage = originalImage.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+			BufferedImage thumbnailImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+
+			// Draw the scaled image onto the thumbnail buffer
+			Graphics2D g2d = thumbnailImage.createGraphics();
+			g2d.drawImage(scaledImage, 0, 0, null);
+			g2d.dispose();
+
+			// Write the thumbnail image to a byte array
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			ImageIO.write(thumbnailImage, "jpg", bos);
+
+			// Create a new Store for the completed task result
+			Store completedTask = new Store();
+			completedTask.key = taskStore.key;
+			completedTask.value = bos.toByteArray();
+
+			return completedTask;
+
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 		return null;
 	}
