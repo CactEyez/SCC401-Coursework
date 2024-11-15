@@ -470,9 +470,9 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			ArrayList<String> words = new ArrayList<>();
 			ArrayList<Integer> wordCount = new ArrayList<>();
 			for(String line: lines) {
+				line = line.replaceAll("[^a-zA-Z]", "").toLowerCase();
 				wordTotal += line.split(" ").length;
 				for(String word: line.split(" ")) {
-					word = word.toLowerCase();
 					if(words.contains(word)) {
 						wordCount.set(words.indexOf(word), wordCount.get(words.indexOf(word)) + 1);
 					}
