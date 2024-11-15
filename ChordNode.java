@@ -34,6 +34,7 @@ class Finger {
 	public IChordNode node;
 }
 
+//Store class needs to implement Serializable so that it can be transmitted across the registry
 class Store implements Serializable {
 	String key;
 	byte[] value;
@@ -59,12 +60,18 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	Finger finger[];
 	int nextFingerFix;
 
+	// I create 4 Vector<Store>s:
+	// - one to track the queue of uncompleted tasks
 	Vector<Store> queuedStore = new Vector<Store>();
 
+	// - one to track all of the completed tasks
 	Vector<Store> completedStore = new Vector<Store>();
 
+	// - one to store the uncompleted tasks of its predecessor
 	Vector<Store> queuedStorePred = new Vector<Store>();
 
+	// - one to store the completed tasks of its predecessor
+	// These last two are for fault tolerance for task computation and data storage
 	Vector<Store> completedStorePred = new Vector<Store>();
 
 	// note: you should always use getKey() to get a node's key; this will make the
@@ -96,17 +103,24 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		// find the node that should hold this key and add the key and value to that
 		// node's local store
 		try {
+			//Hashes the task Id so that it can be compared to other node keys
 			int keyHash = hash(key);
 			IChordNode keyNode = findSuccessor(keyHash);
+
+			// put can stop looping once the task is in the correct node
 			if (keyNode.getKey() == this.getKey()) {
 				Store newStore = new Store();
 				newStore.key = key;
 				newStore.value = value;
+				
+				// simple if statement to change between updating the queued store and the completed store
+				// (only necessary for the fault tolerance - usually tasks get moved straight from queuedStore into completedStore
 				if(queue) {queuedStore.add(newStore);}
 				else {completedStore.add(newStore);}
-				//predecessor.fixStores(queuedStore, completedStore);
+
 				System.out.println("/----------/\nStored: " + key);
 			} else {
+				// if the task is not at the correct node, it is sent onto the next successor
 				this.successor.put(key, value, queue);
 				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
 			}
@@ -123,8 +137,11 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		try {
 			int keyHash = hash(key);
 			IChordNode keyNode = findSuccessor(keyHash);
-			System.out.println(keyNode.getKey());
+
+			// if the requested task is at the current node, the loop stops
 			if (keyNode.getKey() == this.getKey()) {
+
+				// Iterate through all stores
 				for(Store store: completedStore) {
 					if(store.key.equals(key)) {
 						System.out.println("/----------/\nRetrieved: " + key);
@@ -132,6 +149,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 					}
 				}
 			} else {
+
+				// requested task is not at the current node, so is sent to the successor node
 				System.out.println("/----------/\nKey sent to successor node: " + this.successor.getKey());
 				return this.successor.get(key);
 			}
@@ -162,8 +181,11 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	@Override
 	public void join(IChordNode atNode) {
 		try {
+			//When starting, the node cannot know what its predecessor is, so it is set to null
 			predecessor = null;
 			predecessorKey = 0;
+
+			// seeks a successor
 			successor = atNode.findSuccessor(this.getKey());
 			successorKey = successor.getKey();
 		} catch (Exception e) {
@@ -198,16 +220,23 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		return this;
 	}
 
+	// Simple function to check if a node of the specified key is alive
+	// Necessary for successor and predecessor checks
 	boolean isAlive(int key) {
 		boolean chordAlive = false;
 		try {
+			// The registry must loaded and listed to search for the node
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
 
 			for (String name : names) {
+				// Check each regsitry item against the specified key
 				if (name.equals("IChordNode_" + key)) {
 					try {
 						IChordNode foundNode = (IChordNode) registry.lookup(name);
+						
+						// test is not used anywhere else, but is required to check if foundNode exists
+						// if it catches an error, we know the chord is not alive
 						int test = foundNode.getKey();
 						chordAlive = true;
 						break;
@@ -303,8 +332,11 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 
 	void fixFingers() {
 		try {
+			// I have decided to fix all fingers at once instead of one call at a time
+			// This is for clarity in terminal
 			for (int i = 0; i < KEY_BITS; i++) {
 				if (isAlive(finger[i].key) || finger[i].key == 0) {
+					// % (int) Math.pow(2, KEY_BITS) is required to stop overflow
 					IChordNode fingerSucessor = findSuccessor(
 							this.getKey() + (int) Math.pow(2, i) % (int) Math.pow(2, KEY_BITS));
 					finger[i].node = fingerSucessor;
@@ -317,14 +349,22 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		} catch (Exception e) {}
 	}
 
+	// This function handles removing dead nodes from the system
 	void checkPredecessor() {
 		try {
+			// Checks for life
+			// predecessorKey is needed because using predecessor.getKey() would crash if predecessor had crashed
 			if (!isAlive(predecessorKey)) {
 				Registry registry = LocateRegistry.getRegistry("localhost");
 				registry.unbind("IChordNode_" + predecessorKey);
 				System.out.println("/----------/\nPredecessor Chord: " + predecessorKey + " has failed.");
+
+				// predecessor values are set to null to avoid the node trying to reach nodes that dont exist
 				predecessor = null;
 				predecessorKey = 0;
+
+				// if the predecessor has failed, the queued and completed tasks that were stored up 
+				// get repopulated back into the system using .put
 				for(Store store: queuedStorePred) {
 					System.out.println("(Queued) Putting: " + store.key + " in the ring starting at: " + this.getKey());
 					this.put(store.key, store.value, true);
@@ -334,10 +374,10 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 					this.put(store.key, store.value, false);
 				}
 			}
-		} catch (Exception e) {
-		}
+		} catch (Exception e) {}
 	}
 
+	// Checks if this successor is alive, mostly calls other functions and if used for clarity
 	void checkSuccessor() {
 		try {
 			if (!isAlive(successorKey)) {
@@ -348,16 +388,24 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		}
 	}
 
+	// If a node's successor fails, a new one must be found
 	void findNewSuccessor() {
 		try {
 			Registry registry = LocateRegistry.getRegistry("localhost");
 			String[] names = registry.list();
+			
+			// This if statement is for the specific scenario when there is only one node left on the system
 			if (names.length == 1) {
 				successor = this;
 				successorKey = successor.getKey();
 				predecessor = this;
 				predecessorKey = predecessor.getKey();
 			}
+
+			// Iterates through the registry to find any IChordNode
+			// this IChordNode is not used permanently as the successor
+			// but instead removes the dead node from being referenced
+			// and allows stabilise to properly start stabilising
 			for (String name : names) {
 				if (name.contains("IChordNode_") && !name.equals("IChordNode_" + this.getKey())) {
 					this.successor = (IChordNode) registry.lookup(name);
@@ -366,10 +414,6 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			}
 		} catch (Exception e) {
 		}
-	}
-
-	void checkDataMoveDown() {
-		// if I'm storing data that my current predecessor should be holding, move it
 	}
 
 	public void run() {
@@ -405,17 +449,13 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				e.printStackTrace();
 			}
 
-			try {
-				checkDataMoveDown();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-
+			// Checks for outstanding tasks
 			try {
 				checkQueue();
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
+			//Reduces how much the console is spammed with node updates
 			i++;
 			if(i % 8 == 0){
 				printDetails();
@@ -424,20 +464,29 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	@Override
+	// fixStores is called whenever a new task is completed or uploaded
+	// it simply updates this node's predecessor task stores
 	public void fixStores(Vector<Store> qStore, Vector<Store> cStore) {
 		queuedStorePred = qStore;
 		completedStorePred = cStore;
 	}
 
+	// This is called in the maintenance loop to maintain asynchrony
+	// Checks if the queue has any outstanding tasks
+	// Only takes the top task to keep asynchrony
 	public void checkQueue() {
 		if(queuedStore.size() != 0) {
 			processTask(queuedStore.get(0));
 		}
 	}
 
+	// Completes the correct task
 	public void processTask(Store taskStore) {
+		// Parses the type of task required
 		String taskType = taskStore.key.split("[-]")[0];
 		Store completedTask = null;
+
+		// Each task has its own function for clarity
 		switch (taskType) {
 			case "task_1":
 				completedTask = completeTask1(taskStore);
@@ -450,6 +499,9 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				break;
 		}
 		if(completedTask != null) {
+
+			// Moves the newly completed task from queue to completed
+			// then calls fixStores to update the successor of the new store changes
 			completedStore.add(completedTask);
 			queuedStore.remove(0);
 			try{successor.fixStores(queuedStore, completedStore);}catch(Exception e){}
@@ -458,21 +510,32 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		try{successor.fixStores(queuedStore, completedStore);}catch(Exception e){}
 	}
 
+	// Logic for task1 - text analysis
 	public Store completeTask1(Store taskStore) {
+
+		//We want the final filename to be the same as the inputted file
 		String fileName = taskStore.key.split("[-]")[1];
 		String fileType = fileName.split("[.]")[1];
+
+		// Error handling, checks that the input file is of the correct filetype (.txt)
 		if(fileType.equals("txt")) {
 			String textFile = new String(taskStore.value, StandardCharsets.UTF_8);
 			String[] lines = textFile.split("\n");
 
+			// Initialisation of required text values
 			int wordTotal = 0;
 			int totalLength = 0;
 			ArrayList<String> words = new ArrayList<>();
 			ArrayList<Integer> wordCount = new ArrayList<>();
+
 			for(String line: lines) {
+				// Removes all of the punctuation and converts the whole text to lowercase
+				// Avoids the same word getting missclassified
 				line = line.replaceAll("[^a-zA-Z]", "").toLowerCase();
 				wordTotal += line.split(" ").length;
 				for(String word: line.split(" ")) {
+
+					// We must make sure that we arent tallying the same word
 					if(words.contains(word)) {
 						wordCount.set(words.indexOf(word), wordCount.get(words.indexOf(word)) + 1);
 					}
@@ -494,6 +557,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			String mostCommonWord = words.get(highestId);
 			int averageWordLength = totalLength/wordTotal;
 
+			// Creating the xml file
 			try{
 				DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 				DocumentBuilder builder = factory.newDocumentBuilder();
@@ -503,6 +567,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				Element root = document.createElement("Task1");
 				document.appendChild(root);
 
+				// Add each task requirement separately
 				Element total = document.createElement("Total");
 				total.appendChild(document.createTextNode(Integer.toString(wordTotal)));
 
@@ -523,6 +588,9 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				StreamResult result = new StreamResult(outputStream);
 				transformer.transform(source, result);
 
+				// Creates the store for the freshly completed task
+				// taskStore.key is used for the key to ensure the fileName stays consistent on the nodes
+				// This is important so that it can be correctly hashed to
 				Store completedTask = new Store();
 				completedTask.key = taskStore.key;
 				completedTask.value = outputStream.toByteArray();
@@ -540,9 +608,11 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		return null;
 	}
 
+	// Logic for task2 - Zipping a file
 	public Store completeTask2(Store taskStore) {
+
+		// We want the final filename to be the same as the input file
 		String fileName = taskStore.key.split("[-]")[1];
-		String fileType = fileName.split("[.]")[1];
 		try {
 			ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 			ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream);
@@ -554,6 +624,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			zipOutputStream.closeEntry();
 			zipOutputStream.close();
 
+			// Create store for newly completed task
 			Store completedTask = new Store();
 			completedTask.key = taskStore.key;
 			completedTask.value = byteArrayOutputStream.toByteArray();
@@ -567,30 +638,31 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		return null;
 	}
 
+	// Logic for task3 - thumbnail generation
 	public Store completeTask3(Store taskStore) {
 		try {
-			// Read the image from byte array
+			// Converts the bytes to an image
 			ByteArrayInputStream bis = new ByteArrayInputStream(taskStore.value);
 			BufferedImage originalImage = ImageIO.read(bis);
 
-			// Set the dimensions for the thumbnail
+			// Our thumbnail should be only 100x100
 			int width = 100;
 			int height = 100;
 
-			// Scale the image to the new dimensions
+			// Scales the image to the specified dimensions
 			Image scaledImage = originalImage.getScaledInstance(width, height, Image.SCALE_SMOOTH);
 			BufferedImage thumbnailImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 
-			// Draw the scaled image onto the thumbnail buffer
+			// Draws the scaled image onto the thumbnail buffer
 			Graphics2D g2d = thumbnailImage.createGraphics();
 			g2d.drawImage(scaledImage, 0, 0, null);
 			g2d.dispose();
 
-			// Write the thumbnail image to a byte array
+			// Converts the image into a byte array
 			ByteArrayOutputStream bos = new ByteArrayOutputStream();
 			ImageIO.write(thumbnailImage, "jpg", bos);
 
-			// Create a new Store for the completed task result
+			// Create store for the completed task result
 			Store completedTask = new Store();
 			completedTask.key = taskStore.key;
 			completedTask.value = bos.toByteArray();
@@ -603,8 +675,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		return null;
 	}
 
-
-
+	// Small function to show the user the current state of the current node
 	public void printDetails() {
 		System.out.println("/----------/");
 		System.out.println("This key: " + this.getKey());
@@ -616,6 +687,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 	}
 
 	@Override
+	// Called by Web.java for the download page
+	// returns all completed tasks when called
 	public List<String> getCompletedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
 		if (completedStore.size() != 0) {
@@ -623,12 +696,16 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		}
 		for (Store store : completedStore) {
 			System.out.println("Adding completed task: " + store.key);
-			taskIds.add(store.key); // Add the key (task ID) for each stored task
+			
+			// Only the store.key is needed, as the value is gotten through the .get method when specifically downloaded
+			taskIds.add(store.key);
 		}
 		return taskIds;
 	}
 
 	@Override
+	// Called by Web.java for the download page
+	// returns all queued tasks when called
 	public List<String> getQueuedTaskIds() {
 		List<String> taskIds = new ArrayList<>();
 		if (queuedStore.size() != 0) {
@@ -636,6 +713,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		}
 		for (Store store : queuedStore) {
 			System.out.println("Adding queued task: " + store.key);
+
+			// Only the store.key is needed, as the value is gotten through the .get method when specifically downloaded
 			taskIds.add(store.key);
 		}
 		return taskIds;
@@ -650,11 +729,16 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		String nodename = args[0];
 
 		Registry registry;
+
+		// Registry is attempted to be initialised
+		// If this node is the first node connecting into the system
+		// it will successfully initialise the rmi system
 		try{
 			registry = LocateRegistry.createRegistry(1099);
 			System.out.println("Initialising rmi system");
 		}catch(Exception e){System.out.println("Not the first node on the system.");}
 
+		// all nodes will lookup the registry to connect to
 		try {
 			ChordNode node = new ChordNode(nodename);
 			registry = LocateRegistry.getRegistry("localhost");
@@ -663,6 +747,8 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 			System.out.println("Node " + node.getKey() + " bound to registry as: " + "IChordNode_" + node.getKey());
 			String[] names = registry.list();
 			for (String name : names) {
+				// Checking to make sure only IChordNodes are processed, and the IChordNode isnt itself
+				// because a node cannot join itself
 				if (name.contains("IChordNode_") && !name.equals("IChordNode_" + node.hash(nodename))) {
 					IChordNode foundNode = (IChordNode) registry.lookup(name);
 					node.join(foundNode);

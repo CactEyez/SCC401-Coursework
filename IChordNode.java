@@ -3,6 +3,7 @@ import java.rmi.RemoteException;
 import java.util.List;
 import java.util.Vector;
 
+// This is an interface for ChordNode to all it to connect to rmi properly
 public interface IChordNode extends Remote{
     IChordNode getSuccessor() throws RemoteException;
     IChordNode getPredecessor() throws RemoteException;
