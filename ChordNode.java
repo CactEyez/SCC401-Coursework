@@ -1,10 +1,11 @@
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
@@ -107,6 +108,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 		try {
 			int keyHash = hash(key);
 			IChordNode keyNode = findSuccessor(keyHash);
+			System.out.println(keyNode.getKey());
 			if (keyNode.getKey() == this.getKey()) {
 				for(Store store: completedStore) {
 					if(store.key.equals(key)) {
@@ -119,6 +121,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				return this.successor.get(key);
 			}
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 		return null;
 	}
@@ -490,7 +493,7 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				transformer.transform(source, result);
 
 				Store completedTask = new Store();
-				completedTask.key = fileName;
+				completedTask.key = taskStore.key;
 				completedTask.value = outputStream.toByteArray();
 
 				return completedTask;
@@ -508,12 +511,26 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 
 	public Store completeTask2(Store taskStore) {
 		String fileName = taskStore.key.split("[-]")[1];
-		String fileType = fileName.split("[.]")[1];
-		if(fileType.equals("txt")) {
+		try {
+			ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+			ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream);
 
-		}
-		else {
-			System.out.println("Wrong file type, should be .txt");
+			ZipEntry zipEntry = new ZipEntry(fileName);
+			zipOutputStream.putNextEntry(zipEntry);
+
+			zipOutputStream.write(taskStore.value, 0, taskStore.value.length);
+			zipOutputStream.closeEntry();
+			zipOutputStream.close();
+
+			Store completedTask = new Store();
+			completedTask.key = fileName;
+			completedTask.value = byteArrayOutputStream.toByteArray();
+
+			System.out.println("/-----------/\nZipped and stored: " + completedTask.key);
+			return completedTask;
+		} catch (Exception e) {
+			System.out.println("Failed to zip file.");
+			e.printStackTrace();
 		}
 		return null;
 	}

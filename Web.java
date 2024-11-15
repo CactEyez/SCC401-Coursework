@@ -130,7 +130,7 @@ public class Web {
                     html += "<li>";
                     html += "<form action=\"/download_task\" method=\"POST\">";
                     html += "<input type=\"hidden\" name=\"taskId\" value=\"" + taskId + "\" />";
-                    html += "<input type=\"submit\" value=\"Download Task: " + taskId + "\" />";
+                    html += "<input type=\"submit\" value=\"Download Task " + taskId.split("[-]")[0].split("_")[1] + ": " + taskId.split("[-]")[1] + "\" />";
                     html += "</form>";
                     html += "</li>";
                 }
@@ -260,8 +260,6 @@ public class Web {
 
                 // Send the response to the client
                 sendResponse(output, RESPONSE_OK, "text/html", response.getBytes());
-
-                sendResponse(output, RESPONSE_OK, "text/html", "<html>File sent, thanks!</html>".getBytes());
             } else {
                 sendResponse(output, RESPONSE_SERVER_ERROR, null, null);
             }
@@ -285,29 +283,58 @@ public class Web {
                 // Check if taskId was found
                 if (taskId != null) {
                     byte[] fileData = retrieveTaskFromDHT(taskId);  // Retrieve the file data from DHT
-        
-                    if (fileData != null) {
-                        // Set the file name to taskId.xml
-                        String fileName = taskId.split("[.]")[0] + ".xml";
-        
-                        // Set the response headers for file download
-                        // Send the HTTP headers for the download:
-                        try{
-                            output.write("HTTP/1.1 200 OK\r\n".getBytes());
-                            output.write("Content-Type: application/xml\r\n".getBytes());
-                            output.write(("Content-Disposition: attachment; filename=\"" + fileName + "\"\r\n").getBytes());
-                            output.write("Connection: close\r\n".getBytes());
-                            output.write("\r\n".getBytes());  // End of headers
-            
-                            // Send the actual file content (XML) to the client:
-                            output.write(fileData);  // This sends the file content as a download
-                            output.flush();  // Make sure the file content is sent out
-                        }catch(Exception e) {System.out.println("Failed the output stuff");}
-        
-                        System.out.println("File downloaded as: " + fileName);
-                    } else {
-                        // If the task wasn't found, notify the user
-                        sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());
+                    System.out.println(taskId.split("[-]")[0]);
+                    System.out.println(taskId.split("-")[0]);
+                    switch (taskId.split("-")[0]) {
+                        case "task_1":
+                            if (fileData != null) {
+                                // Set the file name to taskId.xml
+                                String fileName = taskId.split("[.]")[0] + ".xml";
+                
+                                // Set the response headers for file download
+                                // Send the HTTP headers for the download:
+                                try{
+                                    output.write("HTTP/1.1 200 OK\r\n".getBytes());
+                                    output.write("Content-Type: application/xml\r\n".getBytes());
+                                    output.write(("Content-Disposition: attachment; filename=\"" + fileName.split("[-]")[1] + "\"\r\n").getBytes());
+                                    output.write("Connection: close\r\n".getBytes());
+                                    output.write("\r\n".getBytes());  // End of headers
+                    
+                                    // Send the actual file content (XML) to the client:
+                                    output.write(fileData);  // This sends the file content as a download
+                                    output.flush();  // Make sure the file content is sent out
+                                }catch(Exception e) {System.out.println("Failed the output stuff");}
+                
+                                System.out.println("File downloaded as: " + fileName);
+                            } else {
+                                // If the task wasn't found, notify the user
+                                sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());
+                            }
+                            break;
+                    
+                        case "task_2":
+                            if (fileData != null) {
+                                // Set the file name to taskId.zip for ZIP download
+                                String fileName = taskId.split("[.]")[0] + ".zip";
+                                try {
+                                    output.write("HTTP/1.1 200 OK\r\n".getBytes());
+                                    output.write("Content-Type: application/zip\r\n".getBytes());
+                                    output.write(("Content-Disposition: attachment; filename=\"" + fileName + "\"\r\n").getBytes());
+                                    output.write("Connection: close\r\n".getBytes());
+                                    output.write("\r\n".getBytes());
+                                    output.write(fileData);
+                                    output.flush();
+                                } catch (Exception e) {
+                                    System.out.println("Failed to send ZIP file: " + e.getMessage());
+                                }
+                                System.out.println("File downloaded as: " + fileName);
+                            } else {
+                                sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());
+                            }
+                            break;
+                        case "task_3":
+
+                            break;
                     }
                 } else {
                     // If taskId is invalid or not provided, notify the user
