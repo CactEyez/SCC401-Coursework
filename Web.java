@@ -1,5 +1,4 @@
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.ArrayList;
@@ -285,16 +284,11 @@ public class Web {
         
                 // Check if taskId was found
                 if (taskId != null) {
-                    System.out.println("Task ID: " + taskId);
                     byte[] fileData = retrieveTaskFromDHT(taskId);  // Retrieve the file data from DHT
         
                     if (fileData != null) {
-                        String fileContent = new String(fileData);
-                        System.out.println("File content:\n" + fileContent);
-        
                         // Set the file name to taskId.xml
                         String fileName = taskId.split("[.]")[0] + ".xml";
-                        System.out.println("Filename for download: " + fileName);
         
                         // Set the response headers for file download
                         // Send the HTTP headers for the download:
@@ -310,7 +304,7 @@ public class Web {
                             output.flush();  // Make sure the file content is sent out
                         }catch(Exception e) {System.out.println("Failed the output stuff");}
         
-                        System.out.println("File sent for download as: " + fileName);
+                        System.out.println("File downloaded as: " + fileName);
                     } else {
                         // If the task wasn't found, notify the user
                         sendResponse(output, RESPONSE_NOT_FOUND, "text/html", "<html>Task not found</html>".getBytes());

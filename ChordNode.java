@@ -490,7 +490,6 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 				transformer.transform(source, result);
 
 				Store completedTask = new Store();
-				System.out.println("Filename: " + fileName);
 				completedTask.key = fileName;
 				completedTask.value = outputStream.toByteArray();
 
@@ -577,9 +576,15 @@ public class ChordNode extends UnicastRemoteObject implements IChordNode, Runnab
 
 		String nodename = args[0];
 
+		Registry registry;
+		try{
+			registry = LocateRegistry.createRegistry(1099);
+			System.out.println("Initialising rmi system");
+		}catch(Exception e){System.out.println("Not the first node on the system.");}
+
 		try {
 			ChordNode node = new ChordNode(nodename);
-			Registry registry = LocateRegistry.getRegistry("localhost");
+			registry = LocateRegistry.getRegistry("localhost");
 			registry.rebind("IChordNode_" + node.getKey(), node);
 			System.out.println("/----------/");
 			System.out.println("Node " + node.getKey() + " bound to registry as: " + "IChordNode_" + node.getKey());
